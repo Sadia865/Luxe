@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useShop } from '../context/ShopContext'
-import { toast } from 'react-toastify'
 import showToast from '../utils/toast'
 
 /* ── Icons ──────────────────────────────────────────────── */
@@ -32,6 +31,75 @@ const COUPONS = {
   FREESHIP:  { discount: 0,  label: 'Free shipping', freeShip: true },
 }
 
+/* ── Mobile cart item card ──────────────────────────────── */
+function MobileCartItem({ item, currency, onQty, onRemove }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 14,
+      padding: '16px',
+      background: 'var(--white)',
+      border: '1px solid var(--mist)',
+      borderRadius: 'var(--r-xl)',
+      marginBottom: 14,
+      boxShadow: 'var(--sh-xs)',
+      position: 'relative',
+    }}>
+      {/* Image */}
+      <Link to={`/product/${item._id}`} style={{ flexShrink: 0 }}>
+        <div style={{ width: 80, height: 96, borderRadius: 'var(--r-lg)', overflow: 'hidden', background: 'var(--sand)' }}>
+          <img src={item.image[0]} alt={item.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => e.target.style.display = 'none'} />
+        </div>
+      </Link>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Link to={`/product/${item._id}`} style={{ textDecoration: 'none' }}>
+          <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.4, marginBottom: 4,
+            overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box',
+            WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            {item.name}
+          </p>
+        </Link>
+        <span style={{
+          display: 'inline-block', padding: '3px 10px',
+          background: 'var(--sand)', borderRadius: 'var(--r-full)',
+          fontSize: 10.5, fontWeight: 600, color: 'var(--mid)',
+          marginBottom: 10,
+        }}>{item.size}</span>
+
+        {/* Price + qty row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div className="qty-control">
+            <button className="qty-btn" onClick={() => onQty(-1)}>−</button>
+            <span className="qty-num">{item.qty}</span>
+            <button className="qty-btn" onClick={() => onQty(+1)}>+</button>
+          </div>
+          <p style={{ fontFamily: 'var(--display)', fontSize: 16, fontWeight: 500, color: 'var(--ink)' }}>
+            {currency}{item.price * item.qty}
+          </p>
+        </div>
+      </div>
+
+      {/* Remove */}
+      <button
+        onClick={onRemove}
+        style={{
+          position: 'absolute', top: 12, right: 12,
+          width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 'var(--r-full)', background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--mist)', transition: 'all .15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = '#fff3f3'; e.currentTarget.style.color = 'var(--error)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--mist)' }}
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  )
+}
+
 export default function Cart() {
   const {
     products, cartItems, currency,
@@ -43,8 +111,14 @@ export default function Cart() {
   const [coupon,      setCoupon]      = useState('')
   const [appliedCode, setAppliedCode] = useState(null)
   const [removingId,  setRemovingId]  = useState(null)
+  const [isMobile,    setIsMobile]    = useState(window.innerWidth <= 768)
 
-  // Build cart data from cartItems + products
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+
   useEffect(() => {
     const data = []
     Object.entries(cartItems).forEach(([id, sizes]) => {
@@ -58,7 +132,6 @@ export default function Cart() {
     setCartData(data)
   }, [cartItems, products])
 
-  // Pricing
   const subtotal    = getCartAmount()
   const couponData  = appliedCode ? COUPONS[appliedCode] : null
   const discountAmt = couponData ? Math.round(subtotal * (couponData.discount || 0) / 100) : 0
@@ -66,7 +139,6 @@ export default function Cart() {
   const shipping    = (subtotal >= 99 || freeShip) ? 0 : delivery_fee
   const total       = subtotal - discountAmt + shipping
 
-  // Apply coupon
   const applyCoupon = () => {
     const code = coupon.trim().toUpperCase()
     if (!code) { showToast.error('Invalid coupon', 'Please enter a coupon code'); return }
@@ -84,7 +156,6 @@ export default function Cart() {
     showToast.info('Coupon removed', 'Your discount has been removed')
   }
 
-  // Remove item with animation
   const handleRemove = async (itemId, size, name) => {
     setRemovingId(`${itemId}-${size}`)
     await new Promise(r => setTimeout(r, 250))
@@ -93,7 +164,6 @@ export default function Cart() {
     showToast.remove(name.slice(0, 36))
   }
 
-  // Qty change — guard 1–99
   const handleQty = (itemId, size, delta, currentQty) => {
     const next = currentQty + delta
     if (next < 1) {
@@ -105,7 +175,7 @@ export default function Cart() {
     updateQuantity(itemId, size, next)
   }
 
-  // Empty cart state
+  // Empty state
   if (cartData.length === 0) return (
     <>
       <div className="page-header">
@@ -152,103 +222,93 @@ export default function Cart() {
       <div className="cart-page">
         <div className="cart-layout">
 
-          {/* ── Items table ──────────────────────────── */}
+          {/* ── Items ──────────────────────────────── */}
           <div>
-            <table className="cart-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Price</th>
-                  <th>Quantity</th>
-                  <th>Total</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+            {isMobile ? (
+              /* ── Mobile card layout ── */
+              <>
                 {cartData.map(item => {
                   const key = `${item._id}-${item.size}`
-                  const removing = removingId === key
                   return (
-                    <tr
-                      key={key}
-                      className="cart-row"
-                      style={{
-                        opacity: removing ? 0.4 : 1,
-                        transition: 'opacity .25s',
-                      }}
-                    >
-                      <td>
-                        <div className="cart-product">
-                          <Link to={`/product/${item._id}`} className="cart-product-img">
-                            <img src={item.image[0]} alt={item.name}
-                              onError={e => e.target.style.display = 'none'} />
-                          </Link>
-                          <div>
-                            <Link
-                              to={`/product/${item._id}`}
-                              className="cart-product-name"
-                              style={{ textDecoration: 'none' }}
-                            >
-                              {item.name}
-                            </Link>
-                            <div style={{ marginTop: 6 }}>
-                              <span className="cart-product-size">{item.size}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        <p className="cart-price">{currency}{item.price}</p>
-                      </td>
-
-                      <td>
-                        <div className="qty-control">
-                          <button
-                            className="qty-btn"
-                            onClick={() => handleQty(item._id, item.size, -1, item.qty)}
-                          >−</button>
-                          <span className="qty-num">{item.qty}</span>
-                          <button
-                            className="qty-btn"
-                            onClick={() => handleQty(item._id, item.size, +1, item.qty)}
-                          >+</button>
-                        </div>
-                      </td>
-
-                      <td>
-                        <p className="cart-price">{currency}{item.price * item.qty}</p>
-                      </td>
-
-                      <td>
-                        <button
-                          className="cart-remove"
-                          onClick={() => handleRemove(item._id, item.size, item.name)}
-                          title="Remove item"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </td>
-                    </tr>
+                    <div key={key} style={{ opacity: removingId === key ? 0.4 : 1, transition: 'opacity .25s' }}>
+                      <MobileCartItem
+                        item={item}
+                        currency={currency}
+                        onQty={delta => handleQty(item._id, item.size, delta, item.qty)}
+                        onRemove={() => handleRemove(item._id, item.size, item.name)}
+                      />
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
+              </>
+            ) : (
+              /* ── Desktop table layout ── */
+              <table className="cart-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Price</th>
+                    <th>Quantity</th>
+                    <th>Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cartData.map(item => {
+                    const key = `${item._id}-${item.size}`
+                    return (
+                      <tr key={key} className="cart-row"
+                        style={{ opacity: removingId === key ? 0.4 : 1, transition: 'opacity .25s' }}>
+                        <td>
+                          <div className="cart-product">
+                            <Link to={`/product/${item._id}`} className="cart-product-img">
+                              <img src={item.image[0]} alt={item.name}
+                                onError={e => e.target.style.display = 'none'} />
+                            </Link>
+                            <div>
+                              <Link to={`/product/${item._id}`} className="cart-product-name"
+                                style={{ textDecoration: 'none' }}>{item.name}</Link>
+                              <div style={{ marginTop: 6 }}>
+                                <span className="cart-product-size">{item.size}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td><p className="cart-price">{currency}{item.price}</p></td>
+                        <td>
+                          <div className="qty-control">
+                            <button className="qty-btn" onClick={() => handleQty(item._id, item.size, -1, item.qty)}>−</button>
+                            <span className="qty-num">{item.qty}</span>
+                            <button className="qty-btn" onClick={() => handleQty(item._id, item.size, +1, item.qty)}>+</button>
+                          </div>
+                        </td>
+                        <td><p className="cart-price">{currency}{item.price * item.qty}</p></td>
+                        <td>
+                          <button className="cart-remove"
+                            onClick={() => handleRemove(item._id, item.size, item.name)}>
+                            <TrashIcon />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
 
-            {/* Bottom row */}
+            {/* Bottom actions */}
             <div style={{
-              marginTop: 24, display: 'flex',
-              justifyContent: 'space-between', alignItems: 'center',
-              flexWrap: 'wrap', gap: 12,
+              marginTop: 20,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12,
             }}>
-              <Link to="/collection" className="btn btn-outline btn-sm">
-                ← Continue Shopping
-              </Link>
-              <button
-                className="btn btn-sm"
+              <Link to="/collection" className="btn btn-outline btn-sm">← Continue Shopping</Link>
+              <button className="btn btn-sm"
                 style={{ color: 'var(--error)', border: '1.5px solid rgba(216,92,92,.3)', borderRadius: 'var(--r-full)' }}
-                onClick={() => { clearCart(); showToast.remove('All items removed from cart') }}
-              >
+                onClick={() => { clearCart(); showToast.remove('All items removed from cart') }}>
                 Clear Cart
               </button>
             </div>
@@ -258,7 +318,6 @@ export default function Cart() {
           <div className="cart-summary fade-up">
             <h2 className="cart-summary__title">Order Summary</h2>
 
-            {/* Line items */}
             <div className="cart-summary-row">
               <span>Subtotal ({cartData.reduce((s, i) => s + i.qty, 0)} items)</span>
               <span>{currency}{subtotal}</span>
@@ -276,8 +335,7 @@ export default function Cart() {
               <span>
                 {shipping === 0
                   ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>Free</span>
-                  : `${currency}${shipping}`
-                }
+                  : `${currency}${shipping}`}
               </span>
             </div>
 
@@ -292,68 +350,53 @@ export default function Cart() {
             )}
 
             <div className="cart-summary-row total">
-              <span>Total</span>
-              <span>{currency}{total}</span>
+              <span>Total</span><span>{currency}{total}</span>
             </div>
 
-            {/* Applied coupon */}
             {appliedCode && (
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '10px 14px', marginTop: 4,
                 background: 'rgba(76,175,125,.08)',
                 border: '1px solid rgba(76,175,125,.2)',
-                borderRadius: 'var(--r-lg)',
-                fontSize: 13,
+                borderRadius: 'var(--r-lg)', fontSize: 13,
               }}>
                 <span>
                   <TagIcon />{' '}
                   <strong style={{ color: 'var(--success)', marginLeft: 6 }}>{appliedCode}</strong>
                   <span style={{ color: 'var(--mid)', marginLeft: 6 }}>applied</span>
                 </span>
-                <button
-                  onClick={removeCoupon}
-                  style={{ fontSize: 11, color: 'var(--error)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--body)' }}
-                >
+                <button onClick={removeCoupon}
+                  style={{ fontSize: 11, color: 'var(--error)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--body)' }}>
                   Remove
                 </button>
               </div>
             )}
 
-            {/* Coupon input */}
             {!appliedCode && (
               <div className="cart-coupon" style={{ marginTop: 16 }}>
-                <input
-                  type="text"
-                  placeholder="Coupon code"
-                  value={coupon}
-                  onChange={e => setCoupon(e.target.value.toUpperCase())}
-                  onKeyDown={e => e.key === 'Enter' && applyCoupon()}
-                />
+                <input type="text" placeholder="Coupon code"
+                  value={coupon} onChange={e => setCoupon(e.target.value.toUpperCase())}
+                  onKeyDown={e => e.key === 'Enter' && applyCoupon()} />
                 <button className="cart-coupon-btn" onClick={applyCoupon}>Apply</button>
               </div>
             )}
 
-            {/* Hint */}
             {!appliedCode && (
               <p style={{ fontSize: 11.5, color: 'var(--soft)', marginTop: 8 }}>
                 Try <strong>FOREVER10</strong> · <strong>SAVE20</strong> · <strong>FREESHIP</strong>
               </p>
             )}
 
-            {/* Checkout CTA */}
-            <button
-              className="btn btn-dark"
+            <button className="btn btn-dark"
               style={{ width: '100%', justifyContent: 'center', marginTop: 20 }}
-              onClick={() => navigate('/place-order')}
-            >
+              onClick={() => navigate('/place-order')}>
               Proceed to Checkout
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
               </svg>
             </button>
 
-            {/* Trust badges */}
             <div style={{ marginTop: 18, display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
               {['🔒 Secure', '↩️ Free Returns', '✅ SSL'].map(t => (
                 <span key={t} style={{ fontSize: 11, color: 'var(--mid)', fontWeight: 500 }}>{t}</span>
